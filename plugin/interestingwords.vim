@@ -171,6 +171,13 @@ function! s:markRecentlyUsed(n)
   call add(s:recentlyUsed, a:n)
 endfunction
 
+" clear the interestingwords colors cache, allowing
+" updates to the interestingWords*Colors lists to
+" take effect
+function! UpdateInterestingColors()
+    let s:hasBuiltColors = 0
+endfunction
+
 " initialise highlight colors from list of GUIColors
 " initialise length of s:interestingWord list
 " initialise s:recentlyUsed list
@@ -236,6 +243,8 @@ if g:interestingWordsDefaultMappings
                \ :call InterestingWords('v')<cr>
       nnoremap <silent> <unique> <script> <Plug>InterestingWordsClear
                \ :call UncolorAllWords()<cr>
+      nnoremap <silent> <unique> <script> <Plug>InterestingWordsUpdateColors
+               \ :call UpdateInterestingColors()<cr>
       nnoremap <silent> <unique> <script> <Plug>InterestingWordsForeward
                \ :call WordNavigation(1)<cr>
       nnoremap <silent> <unique> <script> <Plug>InterestingWordsBackward
