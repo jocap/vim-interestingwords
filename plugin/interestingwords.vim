@@ -9,6 +9,8 @@ let s:interestingWordsTermColors = ['154', '121', '211', '137', '214', '222']
 let g:interestingWordsGUIColors = exists('g:interestingWordsGUIColors') ? g:interestingWordsGUIColors : s:interestingWordsGUIColors
 let g:interestingWordsTermColors = exists('g:interestingWordsTermColors') ? g:interestingWordsTermColors : s:interestingWordsTermColors
 
+let g:interestingWordsHoverBg = '#ffffff'
+let g:interestingWordsHoverFg = ''
 let s:hasBuiltColors = 0
 
 let s:interestingWords = []
@@ -16,27 +18,52 @@ let s:interestingModes = []
 let s:mids = {}
 let s:recentlyUsed = []
 
+function! SetHoverHlColor()
+  let hlbg = printf('%s', synIDattr(hlID('Search'), 'bg#'))
+  if (hlbg != '')
+    let g:interestingWordsHoverBg = hlbg
+  endif
+  let g:interestingWordsHoverFg = printf('%s', synIDattr(hlID('Search'), 'fg#'))
+  call s:buildColors()
+endfunction
+
 function! ColorWord(word, mode)
+  if a:mode == 'h' && exists('g:interestingWordsHoverHl') && g:interestingWordsHoverHl == 0
+    return
+  endif
+
   if !(s:hasBuiltColors)
     call s:buildColors()
   endif
 
   " gets the lowest unused index
-  let n = index(s:interestingWords, 0)
-  if (n == -1)
-    if !(exists('g:interestingWordsCycleColors') && g:interestingWordsCycleColors)
-      echom "InterestingWords: max number of highlight groups reached " . len(s:interestingWords)
+  if a:mode == 'h'
+    " skip already-highlighted words
+    let n = index(s:interestingWords, a:word)
+    if (n != -1)
       return
-    else
-      let n = s:recentlyUsed[0]
-      call UncolorWord(s:interestingWords[n])
+    endif
+  else
+    let n = index(s:interestingWords, 0)
+    if (n == -1)
+      if !(exists('g:interestingWordsCycleColors') && g:interestingWordsCycleColors)
+        echom "InterestingWords: max number of highlight groups reached " . len(s:interestingWords)
+        return
+      else
+        let n = s:recentlyUsed[0]
+        call UncolorWord(s:interestingWords[n])
+      endif
     endif
   endif
 
-  let mid = 595129 + n
-  let s:interestingWords[n] = a:word
-  let s:interestingModes[n] = a:mode
-  let s:mids[a:word] = mid
+  if a:mode == 'h'
+    let mid = 595128
+  else
+    let mid = 595129 + n
+    let s:interestingWords[n] = a:word
+    let s:interestingModes[n] = a:mode
+    let s:mids[a:word] = mid
+  endif
 
   let case = s:checkIgnoreCase(a:word) ? '\c' : '\C'
   if a:mode == 'v'
@@ -45,7 +72,16 @@ function! ColorWord(word, mode)
     let pat = case . '\V\<' . escape(a:word, '\') . '\>'
   endif
 
-  call matchadd("InterestingWord" . (n + 1), pat, 1, mid)
+  if a:mode == 'h'
+    if exists('w:interestingWordsHovered')
+      call matchdelete(mid)
+    else
+      let w:interestingWordsHovered = 1
+    endif
+    call matchadd("InterestingWordHover", pat, 1, mid)
+  else
+    call matchadd("InterestingWord" . (n + 1), pat, 1, mid)
+  endif
 
   call s:markRecentlyUsed(n)
 
@@ -127,7 +163,7 @@ function! InterestingWords(mode) range
   if (s:checkIgnoreCase(currentWord))
     let currentWord = tolower(currentWord)
   endif
-  if (index(s:interestingWords, currentWord) == -1)
+  if a:mode == 'h' || (index(s:interestingWords, currentWord) == -1)
     call ColorWord(currentWord, a:mode)
   else
     call UncolorWord(currentWord)
@@ -146,11 +182,15 @@ endfunction
 
 function! UncolorAllWords()
   for word in s:interestingWords
-    " check that word is actually a String since '0' is falsy
+    " check that word is actually a String since '0' is false
     if (type(word) == 1)
       call UncolorWord(word)
     endif
   endfor
+  if exists('w:interestingWordsHovered')
+      call matchdelete(595128)
+      unlet w:interestingWordsHovered
+  endif
 endfunction
 
 " returns true if the ignorecase flag needs to be used
@@ -175,16 +215,14 @@ endfunction
 " updates to the interestingWords*Colors lists to
 " take effect
 function! UpdateInterestingColors()
-    let s:hasBuiltColors = 0
+  let s:hasBuiltColors = 0
 endfunction
 
 " initialise highlight colors from list of GUIColors
 " initialise length of s:interestingWord list
 " initialise s:recentlyUsed list
 function! s:buildColors()
-  if (s:hasBuiltColors)
-    return
-  endif
+  " select ui type
   if has('gui_running')
     let ui = 'gui'
     let wordColors = g:interestingWordsGUIColors
@@ -192,6 +230,18 @@ function! s:buildColors()
     let ui = 'cterm'
     let wordColors = g:interestingWordsTermColors
   endif
+
+  " always set hover color
+  if g:interestingWordsHoverFg == ''
+      execute 'hi! def InterestingWordHover ' . ui . 'bg=' . g:interestingWordsHoverBg
+  else
+      execute 'hi! def InterestingWordHover ' . ui . 'bg=' . g:interestingWordsHoverBg . ' ' . ui . 'fg=' . g:interestingWordsHoverFg
+  endif
+
+  if (s:hasBuiltColors)
+    return
+  endif
+
   if (exists('g:interestingWordsRandomiseColors') && g:interestingWordsRandomiseColors)
     " fisher-yates shuffle
     let i = len(wordColors)-1
@@ -203,7 +253,7 @@ function! s:buildColors()
       let i -= 1
     endwhile
   endif
-  " select ui type
+
   " highlight group indexed from 1
   let currentIndex = 1
   for wordColor in wordColors
@@ -223,32 +273,44 @@ function! s:Random(n)
 endfunction
 
 if !exists('g:interestingWordsDefaultMappings')
-    let g:interestingWordsDefaultMappings = 1
+  let g:interestingWordsDefaultMappings = 1
+endif
+
+if !exists('g:interestingWordsHoverHl')
+  let g:interestingWordsHoverHl = 1
 endif
 
 if !hasmapto('<Plug>InterestingWords')
-    nnoremap <silent> <leader>k :call InterestingWords('n')<cr>
-    vnoremap <silent> <leader>k :call InterestingWords('v')<cr>
-    nnoremap <silent> <leader>K :call UncolorAllWords()<cr>
+  nnoremap <silent> <leader>k :call InterestingWords('n')<cr>
+  vnoremap <silent> <leader>k :call InterestingWords('v')<cr>
+  nnoremap <silent> <leader>K :call UncolorAllWords()<cr>
 
-    nnoremap <silent> n :call WordNavigation(1)<cr>
-    nnoremap <silent> N :call WordNavigation(0)<cr>
+  nnoremap <silent> n :call WordNavigation(1)<cr>
+  nnoremap <silent> N :call WordNavigation(0)<cr>
 endif
 
 if g:interestingWordsDefaultMappings
-   try
-      nnoremap <silent> <unique> <script> <Plug>InterestingWords
-               \ :call InterestingWords('n')<cr>
-      vnoremap <silent> <unique> <script> <Plug>InterestingWords
-               \ :call InterestingWords('v')<cr>
-      nnoremap <silent> <unique> <script> <Plug>InterestingWordsClear
-               \ :call UncolorAllWords()<cr>
-      nnoremap <silent> <unique> <script> <Plug>InterestingWordsUpdateColors
-               \ :call UpdateInterestingColors()<cr>
-      nnoremap <silent> <unique> <script> <Plug>InterestingWordsForeward
-               \ :call WordNavigation(1)<cr>
-      nnoremap <silent> <unique> <script> <Plug>InterestingWordsBackward
-               \ :call WordNavigation(0)<cr>
-   catch /E227/
-   endtry
+  try
+    nnoremap <silent> <unique> <script> <Plug>InterestingWords
+          \ :call InterestingWords('n')<cr>
+    vnoremap <silent> <unique> <script> <Plug>InterestingWords
+          \ :call InterestingWords('v')<cr>
+    nnoremap <silent> <unique> <script> <Plug>InterestingWordsClear
+          \ :call UncolorAllWords()<cr>
+    nnoremap <silent> <unique> <script> <Plug>InterestingWordsUpdateColors
+          \ :call UpdateInterestingColors()<cr>
+    nnoremap <silent> <unique> <script> <Plug>InterestingWordsForeward
+          \ :call WordNavigation(1)<cr>
+    nnoremap <silent> <unique> <script> <Plug>InterestingWordsBackward
+          \ :call WordNavigation(0)<cr>
+  catch /E227/
+  endtry
+endif
+
+if has('autocmd')
+  augroup interestingWordsHoverHl
+    au BufEnter * call SetHoverHlColor()
+    au ColorScheme * call SetHoverHlColor()
+    au CursorHold * call InterestingWords('h')
+  augroup END
 endif
