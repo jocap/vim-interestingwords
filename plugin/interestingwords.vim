@@ -311,6 +311,7 @@ if has('autocmd')
   augroup interestingWordsHoverHl
     au BufEnter * call SetHoverHlColor()
     au ColorScheme * call SetHoverHlColor()
-    au CursorHold * call InterestingWords('h')
+    " au CursorHold * call InterestingWords('h')
+    " ^ I disabled this because it is creepy.
   augroup END
 endif
